@@ -29,6 +29,10 @@ jobs:
       - name: Publish image
         env:
           SHA: ${{ github.sha }}
+          IMAGE_REPO: ${{ github.repository }}
         run: |
-          pack buildpack package "${GITHUB_REPOSITORY}:${SHA}" \
-            --publish
+          image="ghcr.io/${IMAGE_REPO,,}"
+          echo "Publishing ${image}:${SHA}"
+          pack buildpack package "${image}:${SHA}" \
+            --publish \
+            --config package.toml
