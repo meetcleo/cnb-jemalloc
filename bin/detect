@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
-# bin/detect <build-dir>
+set -eo pipefail
 
-echo "jemalloc" && exit 0
+# The buildpack always opts in when it is included in the order definition.
+cat <<'EOF'
+[[provides]]
+name = "jemalloc"
+EOF
+
+exit 0

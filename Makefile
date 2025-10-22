@@ -15,12 +15,11 @@ console:
 
 	@echo "Console Help"
 	@echo
-	@echo "Specify a version to install:"
-	@echo "    echo 5.2.1 > /env/JEMALLOC_VERSION"
-	@echo
-	@echo "To vendor jemalloc:"
-	@echo "    bin/compile /tmp/build/{app,cache,env}"
+	@echo "Mounts this repository at /buildpack and drops you into the build image."
+	@echo "From inside the container you can exercise the buildpack with:"
+	@echo "    /cnb/lifecycle/detector -app /workspace -buildpack /buildpack -group /tmp/group -plan /tmp/plan"
+	@echo "    /cnb/lifecycle/builder -app /workspace -layers /tmp/layers -group /tmp/group -plan /tmp/plan -platform /platform"
 	@echo
 
 	@docker run --rm -ti -v $(ROOT_DIR):/buildpack -e "STACK=$(STACK)" -w /buildpack $(IMAGE) \
-		bash -c 'mkdir -p /tmp/build/{app,cache,env}; exec bash'
+		bash -c 'mkdir -p /workspace /layers /platform/env; exec bash'
