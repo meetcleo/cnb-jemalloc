@@ -31,5 +31,4 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           pack buildpack package "${GITHUB_REPOSITORY}:${SHA}" \
-            --publish \
-            --config package.toml
+            --publish
