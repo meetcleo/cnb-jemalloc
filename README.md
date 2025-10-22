@@ -26,6 +26,12 @@ pack build my-app \
 The buildpack exports jemalloc binaries and helper scripts on the dyno's
 `$PATH` and configures `LD_PRELOAD` when `JEMALLOC_ENABLED=true`.
 
+## Distribution
+
+GitHub Actions publishes the buildpack image to
+`ghcr.io/meetcleo/cnb-jemalloc` on every branch push, tagging images with the
+associated commit SHA.
+
 ## Made possible by Dead Man's Snitch
 
 Continued development and support of the jemalloc buildpack is sponsored by

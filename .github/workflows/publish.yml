@@ -1,0 +1,35 @@
+name: Publish Buildpack
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pack CLI
+        uses: buildpacks/github-actions/setup-pack@v5.0.0
+
+      - name: Publish image
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          pack buildpack package "${GITHUB_REPOSITORY}:${SHA}" \
+            --publish \
+            --config package.toml
