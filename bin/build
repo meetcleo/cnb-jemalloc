@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAYERS_DIR=${1:?}
+PLATFORM_DIR=${2:?}
+PLAN_PATH=${3:?}
+
+readonly DEFAULT_VERSION="5.3.0"
+
+declare -Ar CHECKSUMS=(
+  ["3.6.0"]="e16c2159dd3c81ca2dc3b5c9ef0d43e1f2f45b04548f42db12e7c12d7bdf84fe"
+  ["4.0.4"]="3fda8d8d7fcd041aa0bebbecd45c46b28873cf37bd36c56bf44961b36d0f42d0"
+  ["4.1.1"]="c8f13b72b3aced936337a864fbe614a43e968f4adf64314b2a39c6ce43c9adae"
+  ["4.2.1"]="5630650d5c1caab95d2f0898de4fe5ab8519dc680b04963b38bb425ef6a42d57"
+  ["4.3.1"]="f7bb183ad8056941791e0f075b802e8ff10bd6e2d904e682f87c8f6a510c278b"
+  ["4.4.0"]="a7aea63e9718d2f1adf81d87e3df3cb1b58deb86fc77bad5d702c4c59687b033"
+  ["4.5.0"]="9409d85664b4f135b77518b0b118c549009dc10f6cba14557d170476611f6780"
+  ["5.0.1"]="4814781d395b0ef093b21a08e8e6e0bd3dab8762f9935bbfb71679b0dea7c3e9"
+  ["5.1.0"]="5396e61cc6103ac393136c309fae09e44d74743c86f90e266948c50f3dbb7268"
+  ["5.2.0"]="74be9f44a60d2a99398e706baa921e4efde82bf8fd16e5c0643c375c5851e3b4"
+  ["5.2.1"]="34330e5ce276099e2e8950d9335db5a875689a4c6a56751ef3b1d8c537f887f6"
+  ["5.3.0"]="2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa"
+)
+
+readonly LAYER_DIR="${LAYERS_DIR}/jemalloc"
+readonly LAYER_TOML="${LAYER_DIR}.toml"
+readonly STACK="${CNB_STACK_ID:-${STACK:-}}"
+
+if [[ -z "${STACK}" ]]; then
+  echo "jemalloc: CNB_STACK_ID was not set" >&2
+  exit 1
+fi
+
+read_env() {
+  local name=${1:?}
+  local path="${PLATFORM_DIR}/env/${name}"
+  if [[ -f "${path}" ]]; then
+    tr -d '[:space:]' < "${path}"
+  fi
+}
+
+version="${DEFAULT_VERSION}"
+if env_version=$(read_env "JEMALLOC_VERSION"); [[ -n "${env_version:-}" ]]; then
+  version="${env_version}"
+fi
+
+checksum=""
+if env_checksum=$(read_env "JEMALLOC_CHECKSUM"); [[ -n "${env_checksum:-}" ]]; then
+  checksum="${env_checksum}"
+elif [[ -n "${CHECKSUMS[${version}]:-}" ]]; then
+  checksum="${CHECKSUMS[${version}]}"
+else
+  echo " !     jemalloc: No checksum available for jemalloc ${version}" >&2
+  exit 1
+fi
+
+metadata_matches() {
+  [[ -f "${LAYER_TOML}" ]] || return 1
+
+  local recorded_version recorded_stack recorded_checksum
+  recorded_version=$(sed -n 's/^version = "\(.*\)"/\1/p' "${LAYER_TOML}")
+  recorded_stack=$(sed -n 's/^stack = "\(.*\)"/\1/p' "${LAYER_TOML}")
+  recorded_checksum=$(sed -n 's/^checksum = "\(.*\)"/\1/p' "${LAYER_TOML}")
+
+  [[ "${recorded_version}" == "${version}" ]] && \
+    [[ "${recorded_stack}" == "${STACK}" ]] && \
+    [[ "${recorded_checksum}" == "${checksum}" ]]
+}
+
+clean_layer() {
+  rm -rf "${LAYER_DIR}" "${LAYER_TOML}"
+}
+
+write_layer_metadata() {
+  cat > "${LAYER_TOML}" <<EOF
+[types]
+build = true
+launch = true
+cache = true
+
+[metadata]
+version = "${version}"
+checksum = "${checksum}"
+stack = "${STACK}"
+EOF
+}
+
+prepare_profile_script() {
+  mkdir -p "${LAYER_DIR}/profile.d"
+  cat > "${LAYER_DIR}/profile.d/jemalloc.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+layer_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="${PATH}:${layer_dir}/bin"
+
+if [[ "${JEMALLOC_ENABLED:-false}" == "true" ]]; then
+  export LD_PRELOAD="${layer_dir}/lib/libjemalloc.so ${LD_PRELOAD:-}"
+fi
+EOF
+  chmod 0755 "${LAYER_DIR}/profile.d/jemalloc.sh"
+}
+
+prepare_helper_script() {
+  mkdir -p "${LAYER_DIR}/bin"
+  cat > "${LAYER_DIR}/bin/jemalloc.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+layer_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export LD_PRELOAD="${layer_dir}/lib/libjemalloc.so ${LD_PRELOAD:-}"
+
+exec "$@"
+EOF
+  chmod 0755 "${LAYER_DIR}/bin/jemalloc.sh"
+}
+
+if metadata_matches; then
+  echo "       jemalloc: Reusing cached layer for ${version}"
+  prepare_profile_script
+  prepare_helper_script
+  write_layer_metadata
+  exit 0
+fi
+
+echo "-----> jemalloc: Installing ${version}"
+clean_layer
+mkdir -p "${LAYER_DIR}"
+
+archive=$(mktemp -t jemalloc-XXXXXX.tar.bz2)
+sources_dir=$(mktemp -d -t jemalloc-src-XXXXXX)
+cleanup() {
+  rm -f "${archive}"
+  rm -rf "${sources_dir}"
+}
+trap cleanup EXIT
+
+url="https://github.com/jemalloc/jemalloc/releases/download/${version}/jemalloc-${version}.tar.bz2"
+echo "       jemalloc: Downloading ${url}"
+curl --fail --location --silent --show-error "${url}" --output "${archive}"
+
+echo "       jemalloc: Verifying checksum"
+if ! echo "${checksum}  ${archive}" | sha256sum --check --status; then
+  echo " !     jemalloc: Downloaded source failed checksum verification" >&2
+  exit 1
+fi
+
+echo "       jemalloc: Compiling ${version}"
+if ! (
+  set -euo pipefail
+  exec > /tmp/jemalloc.log 2>&1
+
+  tar --strip-components=1 -xjf "${archive}" -C "${sources_dir}"
+  cd "${sources_dir}"
+  ./configure --prefix="${LAYER_DIR}"
+  make -j "$(nproc --all)" build_lib_shared
+  make BINDIR="${LAYER_DIR}/bin" LIBDIR="${LAYER_DIR}/lib" install_bin install_lib_shared
+); then
+  echo " !     jemalloc: Build failed" >&2
+  cat /tmp/jemalloc.log >&2 || true
+  exit 1
+fi
+
+prepare_profile_script
+prepare_helper_script
+write_layer_metadata
+
+echo "-----> jemalloc: Done"

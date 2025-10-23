@@ -1,0 +1,14 @@
+api = "0.10"
+
+[buildpack]
+id = "com.cleo.jemalloc"
+name = "Cleo Jemalloc Buildpack"
+version = "0.1.0"
+homepage = "https://github.com/meetcleo/cnb-jemalloc"
+description = "Installs jemalloc and exposes helper tooling"
+
+[metadata]
+default-version = "5.3.0"
+
+[[stacks]]
+id = "*"

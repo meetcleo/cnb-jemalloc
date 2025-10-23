@@ -1,16 +1,36 @@
-# heroku-buildpack-jemalloc
+# Cleo jemalloc Cloud Native Buildpack
 
 [jemalloc](http://jemalloc.net/) is a general purpose malloc implementation
 that works to avoid memory fragmentation in multithreaded applications. This
-buildpack makes it easy to install and use jemalloc on Heroku and compatible
-platforms.
+Cloud Native Buildpack makes it easy to install and use jemalloc on Heroku and
+compatible platforms.
 
-## Install
+## Usage
+
+Add the buildpack to your CNB configuration (for example `project.toml`):
+
+```toml
+[[build.buildpacks]]
+uri = "https://github.com/meetcleo/cnb-jemalloc"
+```
+
+or include it directly when building:
 
 ```console
-heroku buildpacks:add --index 1 https://github.com/gaffneyc/heroku-buildpack-jemalloc.git
-git push heroku master
+pack build my-app \
+  --builder heroku/builder:24 \
+  --buildpack https://github.com/meetcleo/cnb-jemalloc \
+  --path path/to/app
 ```
+
+The buildpack exports jemalloc binaries and helper scripts on the dyno's
+`$PATH` and configures `LD_PRELOAD` when `JEMALLOC_ENABLED=true`.
+
+## Distribution
+
+GitHub Actions publishes the buildpack image to
+`ghcr.io/meetcleo/cnb-jemalloc` on every branch push, tagging images with the
+associated commit SHA.
 
 ## Made possible by Dead Man's Snitch
 
@@ -86,13 +106,13 @@ heroku config:set MALLOC_CONF=dirty_decay_ms:1000,narenas:2,background_thread:tr
 ### JEMALLOC_VERSION
 
 Set this to select or pin to a specific version of jemalloc. The default is to
-use the latest stable version if this is not set. You will receive an error
-mentioning tar if the version does not exist.
+use the latest stable version if this is not set. You will receive an error if
+the requested version does not exist or cannot be verified.
 
 **Default**: `5.3.0`
 
-**note:** This setting is only used during slug compilation. Changing it will
-require a code change to be deployed in order to take affect.
+**note:** This setting is read during the build phase. Changing it will require
+another deploy to rebuild layers before it takes effect.
 
 ```console
 heroku config:set JEMALLOC_VERSION=3.6.0
@@ -120,5 +140,6 @@ available on the [releases page.](https://github.com/gaffneyc/heroku-buildpack-j
 
 ## Development
 
-Run `make console` to start up a shell in a test build environment that mimic's
-Heroku's build phase.
+Run `make console` to start up a shell in a test build environment that mimics
+Heroku's Cloud Native Buildpack lifecycle. The target prints example lifecycle
+commands you can run inside the container.
